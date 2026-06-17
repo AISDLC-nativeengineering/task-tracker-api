@@ -1,25 +1,31 @@
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter, HTTPException, Query, status
+from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import date
 
-router = APIRouter()
+router = APIRouter(prefix="/tasks", tags=["tasks"])
 
 class Task(BaseModel):
     id: int
-    title: str
-    description: Optional[str] = None
-    status: str
+    title: str = Field(..., min_length=1, max_length=100)
+    description: Optional[str] = Field(None, max_length=500)
+    status: str = Field(..., regex="^(pending|in-progress|completed)$")
     due_date: Optional[date] = None
 
+# In-memory storage for tasks
 fake_db: List[Task] = []
 
 @router.get("/", response_model=List[Task])
-def list_tasks():
+def list_tasks(status: Optional[str] = Query(None, regex="^(pending|in-progress|completed)$")):
+    if status:
+        return [task for task in fake_db if task.status == status]
     return fake_db
 
-@router.post("/", response_model=Task)
+@router.post("/", response_model=Task, status_code=status.HTTP_201_CREATED)
 def create_task(task: Task):
+    # Check for duplicate task ID
+    if any(t.id == task.id for t in fake_db):
+        raise HTTPException(status_code=400, detail="Task with this ID already exists")
     fake_db.append(task)
     return task
 
@@ -38,10 +44,10 @@ def update_task(task_id: int, task: Task):
             return task
     raise HTTPException(status_code=404, detail="Task not found")
 
-@router.delete("/{task_id}")
+@router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_task(task_id: int):
     for idx, task in enumerate(fake_db):
         if task.id == task_id:
             fake_db.pop(idx)
-            return {"detail": "Task deleted"}
+            return
     raise HTTPException(status_code=404, detail="Task not found")
