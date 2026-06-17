@@ -12,8 +12,15 @@ class Task(BaseModel):
     status: str = Field(..., regex="^(pending|in-progress|completed)$")
     due_date: Optional[date] = None
 
+class TaskCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=100)
+    description: Optional[str] = Field(None, max_length=500)
+    status: str = Field(..., regex="^(pending|in-progress|completed)$")
+    due_date: Optional[date] = None
+
 # In-memory storage for tasks
 fake_db: List[Task] = []
+next_id = 1  # auto-incrementing task id
 
 @router.get("/", response_model=List[Task])
 def list_tasks(status: Optional[str] = Query(None, regex="^(pending|in-progress|completed)$")):
@@ -22,12 +29,13 @@ def list_tasks(status: Optional[str] = Query(None, regex="^(pending|in-progress|
     return fake_db
 
 @router.post("/", response_model=Task, status_code=status.HTTP_201_CREATED)
-def create_task(task: Task):
-    # Check for duplicate task ID
-    if any(t.id == task.id for t in fake_db):
-        raise HTTPException(status_code=400, detail="Task with this ID already exists")
-    fake_db.append(task)
-    return task
+def create_task(task: TaskCreate):
+    global next_id
+    # Create Task with auto-incremented ID
+    new_task = Task(id=next_id, **task.dict())
+    fake_db.append(new_task)
+    next_id += 1
+    return new_task
 
 @router.get("/{task_id}", response_model=Task)
 def get_task(task_id: int):
